@@ -20,6 +20,7 @@ import (
 )
 
 type AccountToken struct {
+	PersonalNative    bool      `json:"personalNative,omitempty"`
 	PersonalLicense   string    `json:"personalLicense,omitempty"`
 	ID                string    `json:"id"`
 	Email             string    `json:"email"`
@@ -431,6 +432,7 @@ func (s *Store) Upsert(tok TokenSet) (AccountToken, error) {
 	acc := AccountToken{
 		ID:              id,
 		PersonalLicense: tok.PersonalLicense,
+		PersonalNative:  tok.PersonalNative,
 		Email:           tok.Email,
 		DisplayName:     tok.DisplayName,
 		Status:          "online",
@@ -450,6 +452,7 @@ func (s *Store) Upsert(tok TokenSet) (AccountToken, error) {
 		if (existing.TID == PersonalChatTenant) == (acc.TID == PersonalChatTenant) && (existing.ID == acc.ID || (acc.Email != "" && existing.Email == acc.Email)) {
 			if acc.RefreshToken == "" {
 				acc.RefreshToken = existing.RefreshToken
+				acc.PersonalNative = existing.PersonalNative
 			}
 			if acc.TID == "" {
 				acc.TID = existing.TID
@@ -599,7 +602,11 @@ func (s *Store) refreshInflight(acc AccountToken) (AccountToken, error) {
 	var tok TokenSet
 	var err error
 	if acc.TID == PersonalChatTenant {
-		tok, err = RefreshPersonal(acc.RefreshToken, acc.OID)
+		refresh := RefreshPersonal
+		if acc.PersonalNative {
+			refresh = RefreshPersonalNative
+		}
+		tok, err = refresh(acc.RefreshToken, acc.OID)
 		tok.PersonalLicense = acc.PersonalLicense
 	} else {
 		tok, err = Refresh(acc.RefreshToken, acc.ClientID, endpoint, acc.OID, acc.TID)

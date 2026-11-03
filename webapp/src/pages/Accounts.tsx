@@ -12,6 +12,8 @@ type Account = {
   displayName?: string;
   accountType?: string;
   personalLicense?: string;
+  refreshTokenAvailable?: boolean;
+  personalNative?: boolean;
   status: string;
   scheduleEnabled: boolean;
   webSearchEnabled: boolean;
@@ -346,7 +348,7 @@ export function AccountsPage({ push }: { push: Push }) {
                           </div>
                           <div style={{ minWidth: 0 }}>
                             <b>{a.displayName || a.email || a.id}</b>
-                            {a.accountType === "personal" && <small> · {t("Personal Microsoft account")} ({a.personalLicense || "Free"})</small>}
+                            {a.accountType === "personal" && <small> · {t("Personal Microsoft account")} ({a.personalLicense || "Free"})<br />{a.refreshTokenAvailable ? t(a.personalNative ? "Native authorization: automatic renewal enabled" : "Browser authorization: automatic renewal enabled") : t("Short-lived credentials: no refresh token")}</small>}
                             <div style={{ fontSize: 11, color: "var(--muted)", overflowWrap: "anywhere" }}>{a.email}</div>
                             <div style={{ display: "flex", gap: 4, marginTop: 3, flexWrap: "wrap" }}>
                               {!a.webSearchEnabled && <span className="status warn"><span className="dot" />{t("No search")}</span>}

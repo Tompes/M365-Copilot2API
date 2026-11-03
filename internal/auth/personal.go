@@ -21,11 +21,12 @@ const personalScope = "https://substrate.office.com/sydney/v2/.default openid pr
 // PersonalCredentials is the local sign-in helper's export format. It also
 // accepts Windows-Copilot-API's token.json; a refresh obtains the chat resource.
 type PersonalCredentials struct {
-	AccessToken  string  `json:"access_token"`
-	RefreshToken string  `json:"refresh_token"`
-	OID          string  `json:"oid"`
-	ExpiresAt    float64 `json:"expires_at"`
-	LicenseType  string  `json:"license_type"`
+	NativeRefresh bool    `json:"native_refresh,omitempty"`
+	AccessToken   string  `json:"access_token"`
+	RefreshToken  string  `json:"refresh_token"`
+	OID           string  `json:"oid"`
+	ExpiresAt     float64 `json:"expires_at"`
+	LicenseType   string  `json:"license_type"`
 }
 
 func (p PersonalCredentials) TokenSet() (TokenSet, error) {
@@ -41,9 +42,13 @@ func (p PersonalCredentials) TokenSet() (TokenSet, error) {
 	if p.AccessToken == "" && p.RefreshToken == "" {
 		return TokenSet{}, fmt.Errorf("access_token or refresh_token required")
 	}
-	t := TokenSet{AccessToken: p.AccessToken, RefreshToken: p.RefreshToken, HomeOID: p.OID, TenantID: PersonalChatTenant, PersonalLicense: p.LicenseType, ExpiresAt: time.Unix(int64(p.ExpiresAt), 0)}
+	t := TokenSet{AccessToken: p.AccessToken, RefreshToken: p.RefreshToken, HomeOID: p.OID, TenantID: PersonalChatTenant, PersonalNative: p.NativeRefresh, PersonalLicense: p.LicenseType, ExpiresAt: time.Unix(int64(p.ExpiresAt), 0)}
 	if p.RefreshToken != "" {
-		renewed, err := RefreshPersonal(p.RefreshToken, p.OID)
+		refresh := RefreshPersonal
+		if p.NativeRefresh {
+			refresh = RefreshPersonalNative
+		}
+		renewed, err := refresh(p.RefreshToken, p.OID)
 		if err != nil {
 			return TokenSet{}, err
 		}
@@ -71,7 +76,24 @@ func RefreshPersonal(refreshToken, oid string) (TokenSet, error) {
 	return refreshPersonalAt(outbound.HTTPClient(), endpoint, form, oid)
 }
 
+// RefreshPersonalNative uses a server-side family refresh grant. An Origin
+// header would turn this into a CORS redemption and Microsoft rejects native
+// credentials with AADSTS90023. Browser grants keep their existing broker flow.
+func RefreshPersonalNative(refreshToken, oid string) (TokenSet, error) {
+	form := url.Values{
+		"client_id": {DefaultClientID}, "grant_type": {"refresh_token"},
+		"refresh_token": {refreshToken}, "scope": {personalScope}, "client_info": {"1"},
+	}
+	token, err := personalTokenRequest(outbound.HTTPClient(), "https://login.microsoftonline.com/consumers/oauth2/v2.0/token", form, oid, "")
+	token.PersonalNative = true
+	return token, err
+}
+
 func refreshPersonalAt(client *http.Client, endpoint string, form url.Values, oid string) (TokenSet, error) {
+	return personalTokenRequest(client, endpoint, form, oid, "https://copilot.com")
+}
+
+func personalTokenRequest(client *http.Client, endpoint string, form url.Values, oid, origin string) (TokenSet, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
@@ -79,7 +101,9 @@ func refreshPersonalAt(client *http.Client, endpoint string, form url.Values, oi
 		return TokenSet{}, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Origin", "https://copilot.com")
+	if origin != "" {
+		req.Header.Set("Origin", origin)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return TokenSet{}, fmt.Errorf("personal token refresh transport failed")

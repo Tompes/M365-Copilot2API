@@ -858,28 +858,30 @@ func (s *Server) accounts(w http.ResponseWriter, r *http.Request) {
 	}
 	list := s.tokens.List()
 	type view struct {
-		AccountType      string     `json:"accountType"`
-		PersonalLicense  string     `json:"personalLicense,omitempty"`
-		ID               string     `json:"id"`
-		Email            string     `json:"email"`
-		DisplayName      string     `json:"displayName,omitempty"`
-		Status           string     `json:"status"`
-		ScheduleEnabled  bool       `json:"scheduleEnabled"`
-		WebSearchEnabled bool       `json:"webSearchEnabled"`
-		SystemPrompt     string     `json:"systemPrompt,omitempty"`
-		CallCount        uint64     `json:"callCount"`
-		RateLimited      bool       `json:"rateLimited"`
-		ImageLimited     bool       `json:"imageLimited"`
-		AuthFailed       bool       `json:"authFailed"`
-		AuthFailReason   string     `json:"authFailReason,omitempty"`
-		CooldownUntil    *time.Time `json:"cooldownUntil,omitempty"`
-		Throttling       any        `json:"throttling,omitempty"`
-		Concurrency      int        `json:"concurrency"`
-		OID              string     `json:"oid,omitempty"`
-		TID              string     `json:"tid,omitempty"`
-		ExpiresAt        time.Time  `json:"expiresAt,omitempty"`
-		UpdatedAt        time.Time  `json:"updatedAt,omitempty"`
-		BoundProxy       string     `json:"boundProxy,omitempty"`
+		AccountType           string     `json:"accountType"`
+		PersonalLicense       string     `json:"personalLicense,omitempty"`
+		RefreshTokenAvailable bool       `json:"refreshTokenAvailable"`
+		PersonalNative        bool       `json:"personalNative,omitempty"`
+		ID                    string     `json:"id"`
+		Email                 string     `json:"email"`
+		DisplayName           string     `json:"displayName,omitempty"`
+		Status                string     `json:"status"`
+		ScheduleEnabled       bool       `json:"scheduleEnabled"`
+		WebSearchEnabled      bool       `json:"webSearchEnabled"`
+		SystemPrompt          string     `json:"systemPrompt,omitempty"`
+		CallCount             uint64     `json:"callCount"`
+		RateLimited           bool       `json:"rateLimited"`
+		ImageLimited          bool       `json:"imageLimited"`
+		AuthFailed            bool       `json:"authFailed"`
+		AuthFailReason        string     `json:"authFailReason,omitempty"`
+		CooldownUntil         *time.Time `json:"cooldownUntil,omitempty"`
+		Throttling            any        `json:"throttling,omitempty"`
+		Concurrency           int        `json:"concurrency"`
+		OID                   string     `json:"oid,omitempty"`
+		TID                   string     `json:"tid,omitempty"`
+		ExpiresAt             time.Time  `json:"expiresAt,omitempty"`
+		UpdatedAt             time.Time  `json:"updatedAt,omitempty"`
+		BoundProxy            string     `json:"boundProxy,omitempty"`
 	}
 	out := make([]view, 0, len(list))
 	for _, a := range list {
@@ -905,6 +907,7 @@ func (s *Server) accounts(w http.ResponseWriter, r *http.Request) {
 		out = append(out, view{
 			ID: a.ID, Email: a.Email, DisplayName: a.DisplayName,
 			AccountType: accountType(a), PersonalLicense: a.PersonalLicense,
+			RefreshTokenAvailable: a.RefreshToken != "", PersonalNative: a.PersonalNative,
 			Status: status, ScheduleEnabled: !a.ScheduleDisabled, WebSearchEnabled: !a.WebSearchDisabled, SystemPrompt: a.SystemPrompt,
 			CallCount: callCount, RateLimited: rateLimited,
 			ImageLimited:   imageLimited,

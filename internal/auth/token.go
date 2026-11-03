@@ -14,6 +14,7 @@ import (
 )
 
 type TokenSet struct {
+	PersonalNative  bool      `json:"personal_native,omitempty"`
 	PersonalLicense string    `json:"personal_license,omitempty"`
 	AccessToken     string    `json:"access_token"`
 	RefreshToken    string    `json:"refresh_token,omitempty"`

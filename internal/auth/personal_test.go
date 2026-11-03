@@ -121,3 +121,53 @@ func TestPersonalStoreAutoRefreshUsesConsumerGrant(t *testing.T) {
 		t.Fatal("refresh rotation or profile not persisted")
 	}
 }
+
+func TestPersonalNativeRefreshOmitsBrowserHeadersAndPersistsMode(t *testing.T) {
+	client := outbound.HTTPClient()
+	original := client.Transport
+	defer func() { client.Transport = original }()
+	calls := 0
+	client.Transport = personalRoundTripper(func(r *http.Request) (*http.Response, error) {
+		calls++
+		r.ParseForm()
+		if r.Header.Get("Origin") != "" || r.URL.Query().Get("brk_client_id") != "" || r.Form.Get("brk_client_id") != "" {
+			t.Error("native refresh must not use browser Origin or broker grant")
+		}
+		if r.URL.Path != "/consumers/oauth2/v2.0/token" || r.Form.Get("client_id") != DefaultClientID || r.Form.Get("scope") != personalScope {
+			t.Error("incorrect native consumer refresh request")
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"access_token":"native-access","refresh_token":"native-rotated","expires_in":3600}`)), Header: make(http.Header)}, nil
+	})
+	p := PersonalCredentials{RefreshToken: "native-initial", OID: testPersonalOID, LicenseType: "Premium", NativeRefresh: true}
+	token, err := p.TokenSet()
+	if err != nil || !token.PersonalNative {
+		t.Fatalf("native import failed: %v", err)
+	}
+	token.ExpiresAt = time.Now().Add(-time.Minute)
+	path := filepath.Join(t.TempDir(), "accounts.json")
+	store, _ := OpenStore(path)
+	if _, err = store.Upsert(token); err != nil {
+		t.Fatal(err)
+	}
+	store, err = OpenStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An access-only re-import must keep the mode belonging to the retained RT.
+	imported, err := store.Upsert(TokenSet{HomeOID: testPersonalOID, TenantID: PersonalChatTenant, PersonalLicense: "Premium", AccessToken: "access-only", ExpiresAt: time.Now().Add(-time.Minute)})
+	if err != nil || !imported.PersonalNative {
+		t.Fatalf("access-only import lost the retained refresh mode: %v", err)
+	}
+	got, err := store.EnsureValid(testPersonalOID)
+	if err != nil || calls != 2 || !got.PersonalNative || got.RefreshToken != "native-rotated" || got.PersonalLicense != "Premium" {
+		t.Fatalf("native mode or rotation lost: %v, calls %d", err, calls)
+	}
+	store, err = OpenStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, _ := store.Get(testPersonalOID)
+	if !saved.PersonalNative {
+		t.Fatal("native refresh mode was not persisted")
+	}
+}

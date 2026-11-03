@@ -48,6 +48,9 @@ const dict: Record<string, Partial<Record<Locale, string>>> = {
   "Fallback plan for JSON without license_type": { "zh-CN": "JSON 未包含套餐时使用" },
   "Copy the script, open Microsoft Copilot and run it in DevTools Console. Keep the page open, start a new chat and send a short message. Paste the resulting JSON below.": { "zh-CN": "复制脚本，在微软 Copilot 页打开开发者工具 Console 并运行。不要刷新页面，新建聊天并发送一条简短消息，然后将输出的 JSON 粘贴到下方。" },
   "Credentials stay in memory until you submit them to this gateway. Import sends one verification message before saving. Without a refresh token, collect again after expiry.": { "zh-CN": "凭证仅保留在当前页面内存中，提交后才发送到本网关。导入时会发送一条验证消息，成功后保存；未采集到刷新令牌时，到期后需重新采集。" },
+  "Native authorization: automatic renewal enabled": { "zh-CN": "原生授权：已启用自动续期" },
+  "Browser authorization: automatic renewal enabled": { "zh-CN": "网页授权：已启用自动续期" },
+  "Short-lived credentials: no refresh token": { "zh-CN": "短期凭证：无刷新令牌" },
   // Navigation
   Dashboard: { "zh-CN": "控制台", "zh-TW": "控制台", ja: "ダッシュボード", ko: "대시보드", es: "Panel", fr: "Tableau de bord", de: "Dashboard", "pt-BR": "Painel", ru: "Панель", ar: "لوحة التحكم" },
   Usage: { "zh-CN": "用量", "zh-TW": "用量", ja: "使用量", ko: "사용량", es: "Uso", fr: "Utilisation", de: "Nutzung", "pt-BR": "Uso", ru: "Использование", ar: "الاستخدام" },

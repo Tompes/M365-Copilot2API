@@ -63,5 +63,5 @@ func (s *Server) importPersonalAccount(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, 500, "internal_error", "could not save personal account")
 		return
 	}
-	jsonOut(w, map[string]any{"status": "verified", "account": map[string]any{"id": acc.ID, "accountType": "personal", "personalLicense": acc.PersonalLicense, "expiresAt": acc.ExpiresAt}})
+	jsonOut(w, map[string]any{"status": "verified", "account": map[string]any{"id": acc.ID, "accountType": "personal", "personalLicense": acc.PersonalLicense, "expiresAt": acc.ExpiresAt, "autoRefresh": acc.RefreshToken != "", "nativeRefresh": acc.PersonalNative}})
 }

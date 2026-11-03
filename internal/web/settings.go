@@ -16,6 +16,10 @@ import (
 )
 
 type modelMapping struct {
+	Scenario              string `json:"scenario,omitempty"`
+	RouteKind             string `json:"routeKind,omitempty"`
+	AccountScope          string `json:"accountScope,omitempty"`
+	Disabled              bool   `json:"disabled,omitempty"`
 	PublicModel           string `json:"publicModel"`
 	UpstreamTone          string `json:"upstreamTone"`
 	DisplayName           string `json:"displayName"`
@@ -58,6 +62,7 @@ type runtimeSettings struct {
 	RedirectURI                       string         `json:"redirectUri"`
 	Scope                             string         `json:"scope"`
 	ModelMappings                     []modelMapping `json:"modelMappings"`
+	HideBuiltinModels                 bool           `json:"hideBuiltinModels"`
 	ToolPlanningMode                  string         `json:"toolPlanningMode"`
 	RateLimitCooldownSeconds          int            `json:"rateLimitCooldownSeconds"`
 	TransientThrottledCooldownSeconds int            `json:"transientThrottledCooldownSeconds"`
@@ -190,8 +195,17 @@ func validateSettings(v runtimeSettings) error {
 			return fmt.Errorf("公开模型 ID %q 重复", model)
 		}
 		seen[key] = struct{}{}
-		if !validUpstreamTone(strings.TrimSpace(mapping.UpstreamTone)) {
-			return fmt.Errorf("上游 tone %q 不受支持", mapping.UpstreamTone)
+		if !validModelScenario(mapping.Scenario) {
+			return fmt.Errorf("invalid model scenario")
+		}
+		if mapping.RouteKind != "" && mapping.RouteKind != "mode" && mapping.RouteKind != "model" {
+			return fmt.Errorf("invalid model route kind")
+		}
+		if !validModelScope(mapping.AccountScope) {
+			return fmt.Errorf("invalid model account scope")
+		}
+		if !validToneIdentifier(strings.TrimSpace(mapping.UpstreamTone)) {
+			return fmt.Errorf("上游标识只允许 1-128 个字母、数字、点、下划线或连字符")
 		}
 		if strings.TrimSpace(mapping.DisplayName) == "" {
 			return fmt.Errorf("公开模型 %q 缺少显示名称", model)
@@ -245,7 +259,7 @@ func (s *settingsStore) save(v runtimeSettings) error {
 func (s *Server) adminSettings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		jsonOut(w, map[string]any{"settings": s.settings.get(), "codexModels": configurableCodexModels, "upstreamTones": knownUpstreamTones(), "autoStartSupported": autoStartSupported(), "autoStart": autoStartEnabled(), "restartRequiredFields": []string{"listenAddress", "configPath", "tokenCachePath", "sessionCachePath", "outboundProxy", "proxyPool", "clientId", "authority", "redirectUri", "scope", "debugLogPath"}})
+		jsonOut(w, map[string]any{"settings": s.settings.get(), "codexModels": configurableCodexModels, "upstreamTones": liveUpstreamTones(), "modelDiscovery": modelDiscoveryInfo(), "autoStartSupported": autoStartSupported(), "autoStart": autoStartEnabled(), "restartRequiredFields": []string{"listenAddress", "configPath", "tokenCachePath", "sessionCachePath", "outboundProxy", "proxyPool", "clientId", "authority", "redirectUri", "scope", "debugLogPath"}})
 	case http.MethodPut:
 		// 前端可能只修改一个字段（如监听地址），其余字段以零值提交。
 		// 逐字段合并到当前设置再校验，避免"改一个字段弄丢其他配置"。

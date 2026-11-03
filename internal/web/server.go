@@ -133,6 +133,7 @@ func (s *Server) confirmRateLimitNotice(ctx context.Context, acc auth.AccountTok
 }
 
 type Server struct {
+	modelProbes          sync.Map
 	personalDevices      personalDeviceStore
 	personalAuthorizer   personalDeviceAuthorizer
 	mu                   sync.Mutex
@@ -529,6 +530,8 @@ func (s *Server) Routes() http.Handler {
 	m.HandleFunc("/api/admin/models", s.adminModels)
 	m.HandleFunc("/api/admin/models/test", s.adminModelTest)
 	m.HandleFunc("/api/admin/models/sync", s.adminModelSync)
+	m.HandleFunc("/api/admin/models/discovery", s.modelDiscovery)
+	m.HandleFunc("/api/admin/models/probe", s.probeModel)
 	m.HandleFunc("/api/admin/settings", s.adminSettings)
 	m.HandleFunc("/api/metrics", s.adminMetrics)
 	m.HandleFunc("/api/admin/proxy-pool", s.proxyPool)
@@ -1306,6 +1309,21 @@ func (s *Server) resolveAccount(accountID string) (auth.AccountToken, error) {
 // resolveAccountCtx is resolveAccount with request cancellation and a bounded
 // wait for imminent recovery.
 func (s *Server) resolveAccountCtx(ctx context.Context, accountID string) (auth.AccountToken, error) {
+	scope := scopeFromContext(ctx)
+	if scope != "all" && accountID == "" {
+		for _, a := range s.tokens.List() {
+			if !a.ScheduleDisabled && modelScopeMatches(scope, a) && s.accountAvailable(a.ID) {
+				tok, err := s.tokens.EnsureValid(a.ID)
+				if err == nil {
+					return tok, nil
+				}
+			}
+		}
+		return auth.AccountToken{}, fmt.Errorf("no available account matches model scope %s", scope)
+	}
+	if err := s.checkAccountModelScope(ctx, accountID); err != nil {
+		return auth.AccountToken{}, err
+	}
 	return s.resolveAccountUntil(ctx, accountID, time.Now().Add(resolveWaitWindow))
 }
 
@@ -1356,7 +1374,7 @@ func (s *Server) tryResolve(ctx context.Context) (auth.AccountToken, bool) {
 			continue
 		}
 		tried[candidate] = true
-		if !s.tokens.ScheduleEnabled(candidate) || !s.accountAvailable(candidate) {
+		if s.checkAccountModelScope(ctx, candidate) != nil || !s.tokens.ScheduleEnabled(candidate) || !s.accountAvailable(candidate) {
 			continue
 		}
 		tok, err := s.tokens.EnsureValid(candidate)
@@ -1922,9 +1940,22 @@ func (s *Server) adminModelSync(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, http.StatusMethodNotAllowed, "invalid_request_error", "method not allowed")
 		return
 	}
-	syncUpstreamTones()
-	tones := liveUpstreamTones()
-	jsonOut(w, map[string]any{"synced": true, "upstream_tones": tones, "count": len(tones)})
+	var body struct {
+		Source string `json:"source"`
+	}
+	if r.Body != nil {
+		err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2048)).Decode(&body)
+		if err != nil && err != io.EOF {
+			writeOpenAIError(w, 400, "invalid_request_error", "invalid sync request")
+			return
+		}
+	}
+	tones, err := discoverModelTones(r.Context(), body.Source)
+	if err != nil {
+		writeOpenAIError(w, 502, "model_discovery_error", err.Error())
+		return
+	}
+	jsonOut(w, map[string]any{"synced": true, "upstream_tones": tones, "count": len(tones), "discovery": modelDiscoveryInfo()})
 }
 
 func (s *Server) adminModels(w http.ResponseWriter, r *http.Request) {
@@ -1932,7 +1963,7 @@ func (s *Server) adminModels(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, http.StatusMethodNotAllowed, "invalid_request_error", "method not allowed")
 		return
 	}
-	jsonOut(w, map[string]any{"object": "list", "data": modelCatalog()})
+	jsonOut(w, map[string]any{"object": "list", "data": s.scopedModelCatalog()})
 }
 
 // adminModelTest 由控制台模型测试调用，通过管理员会话鉴权，不依赖明文 API Key
@@ -1943,14 +1974,15 @@ func (s *Server) adminModelTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b struct {
-		Model  string `json:"model"`
-		Prompt string `json:"prompt"`
+		Model     string `json:"model"`
+		AccountID string `json:"accountId"`
+		Prompt    string `json:"prompt"`
 	}
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&b) != nil || strings.TrimSpace(b.Model) == "" {
 		writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", "bad json: model required")
 		return
 	}
-	acc, err := s.resolveAccountCtx(r.Context(), "")
+	acc, err := s.resolveAccountCtx(withModelScope(r.Context(), b.Model), b.AccountID)
 	if err != nil {
 		writeUpstreamError(w, err)
 		return
@@ -1964,13 +1996,17 @@ func (s *Server) adminModelTest(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, http.StatusBadRequest, "account_error", "account missing oid/tid")
 		return
 	}
-	tone, _ := reasoningTone(b.Model, "")
+	tone, toneErr := reasoningTone(b.Model, "")
+	if toneErr != nil {
+		writeOpenAIError(w, 400, "invalid_request_error", toneErr.Error())
+		return
+	}
 	prompt := strings.TrimSpace(b.Prompt)
 	if prompt == "" {
 		prompt = `Say "OK" in one word.`
 	}
 	start := time.Now()
-	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(s.settings.get().ChatTimeoutSeconds)*time.Second)
+	ctx, cancel := context.WithTimeout(withModelScope(r.Context(), b.Model), time.Duration(s.settings.get().ChatTimeoutSeconds)*time.Second)
 	defer cancel()
 	testCfg := s.settings.get()
 	res, err := s.chatWithAccount(ctx, acc.ID, chathub.Account{AccessToken: acc.AccessToken, OID: acc.OID, TID: acc.TID}, chathub.Request{
@@ -1996,7 +2032,7 @@ func (s *Server) openaiModels(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, http.StatusMethodNotAllowed, "invalid_request_error", "method not allowed")
 		return
 	}
-	data := modelCatalog()
+	data := s.scopedModelCatalog()
 	created := time.Now().Unix()
 	for _, model := range data {
 		model["created"] = created
@@ -2210,6 +2246,7 @@ func (s *Server) openaiChat(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", "bad json")
 		return
 	}
+	r = r.WithContext(withModelScope(r.Context(), body.Model))
 	// Captured before any sticky mechanism (session key, user session, session
 	// resolver, context affinity) fills body.AccountID, so a later routing
 	// failure can tell an explicit client choice from an automatic binding.

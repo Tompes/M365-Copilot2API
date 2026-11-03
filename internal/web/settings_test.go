@@ -44,9 +44,13 @@ func TestModelMappingsValidate(t *testing.T) {
 	if err := validateSettings(v); err != nil {
 		t.Fatal(err)
 	}
-	v.ModelMappings[0].UpstreamTone = "unknown"
+	v.ModelMappings[0].UpstreamTone = "New_Vendor_Model_123"
+	if err := validateSettings(v); err != nil {
+		t.Fatal("custom identifier rejected:", err)
+	}
+	v.ModelMappings[0].UpstreamTone = "https://untrusted.invalid/"
 	if err := validateSettings(v); err == nil {
-		t.Fatal("accepted unknown upstream tone")
+		t.Fatal("accepted URL as upstream identifier")
 	}
 	v.ModelMappings[0].UpstreamTone = "Gpt_5_6_Reasoning"
 	v.ModelMappings = append(v.ModelMappings, v.ModelMappings[0])

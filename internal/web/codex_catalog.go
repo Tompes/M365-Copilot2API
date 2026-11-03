@@ -4,16 +4,9 @@ package web
 
 import (
 	"fmt"
-	"io"
-	"log"
-	"net/http"
 	"os"
-	"regexp"
-	"sort"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 )
 
 type modelLimits struct{ ContextWindow, MaxInputTokens, MaxOutputTokens int }
@@ -115,14 +108,10 @@ func strictModelMode() bool {
 	return false
 }
 
-func validUpstreamTone(tone string) bool {
-	for _, known := range liveUpstreamTones() {
-		if tone == known {
-			return true
-		}
-	}
-	return false
-}
+// Custom tone identifiers are identifiers, never URLs or code. Being syntactically
+// valid does not imply Microsoft supports the identifier or grants this account access.
+func validToneIdentifier(tone string) bool { return publicModelID.MatchString(tone) }
+func validUpstreamTone(tone string) bool   { return validToneIdentifier(tone) }
 
 func knownUpstreamTones() []string {
 	return []string{
@@ -133,74 +122,6 @@ func knownUpstreamTones() []string {
 		"Gpt_5_6_Reasoning",
 		"Claude_Sonnet", "Claude_Sonnet_Reasoning",
 	}
-}
-
-var (
-	dynamicTones []string
-	dynamicMu    sync.RWMutex
-	dynamicAt    time.Time
-)
-
-func liveUpstreamTones() []string {
-	dynamicMu.RLock()
-	if dynamicAt.IsZero() || time.Since(dynamicAt) > 24*time.Hour {
-		dynamicMu.RUnlock()
-		go syncUpstreamTones()
-		dynamicMu.RLock()
-	}
-	t := dynamicTones
-	dynamicMu.RUnlock()
-	if len(t) > 0 {
-		return t
-	}
-	return knownUpstreamTones()
-}
-
-func syncUpstreamTones() {
-	tones := fetchUpstreamTones()
-	if len(tones) == 0 {
-		return
-	}
-	dynamicMu.Lock()
-	dynamicTones = tones
-	dynamicAt = time.Now()
-	dynamicMu.Unlock()
-	log.Printf("synced %d upstream tones from CDN bundle", len(tones))
-}
-
-func fetchUpstreamTones() []string {
-	client := &http.Client{Timeout: 30 * time.Second}
-	pageURL := "https://m365.cloud.microsoft/"
-	resp, err := client.Get(pageURL)
-	if err != nil {
-		return nil
-	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	resp.Body.Close()
-	re := regexp.MustCompile(`main\.[a-f0-9]{8}\.js`)
-	m := re.FindString(string(body))
-	if m == "" {
-		return nil
-	}
-	bundleURL := "https://res.public.onecdn.static.microsoft/midgard/versionless-v2/" + m
-	resp2, err := client.Get(bundleURL)
-	if err != nil {
-		return nil
-	}
-	bundle, _ := io.ReadAll(io.LimitReader(resp2.Body, 4<<20))
-	resp2.Body.Close()
-	toneRe := regexp.MustCompile(`(?:Gpt_[0-9]_[0-9]_[A-Za-z_]+|Claude_[A-Za-z0-9_]+|Magic)`)
-	matches := toneRe.FindAllString(string(bundle), -1)
-	seen := map[string]bool{}
-	for _, t := range matches {
-		seen[t] = true
-	}
-	result := make([]string, 0, len(seen))
-	for t := range seen {
-		result = append(result, t)
-	}
-	sort.Strings(result)
-	return result
 }
 
 func configuredModelMapping(model string, mappings []modelMapping) (modelMapping, bool) {
@@ -223,7 +144,19 @@ func configuredModelTone(model string, mappings []modelMapping) (string, bool) {
 
 func configuredModelSpecs(mappings []modelMapping) []modelSpec {
 	models := append([]modelSpec(nil), gatewayModels...)
+	if currentSettings().HideBuiltinModels {
+		models = nil
+	}
 	for _, mapping := range mappings {
+		if mapping.Disabled {
+			for i := range models {
+				if strings.EqualFold(models[i].ID, strings.TrimSpace(mapping.PublicModel)) {
+					models = append(models[:i], models[i+1:]...)
+					break
+				}
+			}
+			continue
+		}
 		spec := modelSpec{
 			ID: strings.TrimSpace(mapping.PublicModel), Owner: "microsoft-365", Tools: true,
 			DisplayName: strings.TrimSpace(mapping.DisplayName), DefaultReasoningLevel: strings.TrimSpace(mapping.DefaultReasoningLevel),
@@ -274,6 +207,14 @@ func normalizeReasoningEffort(e string) (string, error) {
 	return "", fmt.Errorf("unsupported reasoning effort %q; use none, minimal, low, medium, high, or xhigh", e)
 }
 func reasoningTone(model, effort string) (string, error) {
+	if currentSettings().HideBuiltinModels {
+		if _, ok := configuredModelMapping(model, currentSettings().ModelMappings); !ok {
+			return "", fmt.Errorf("model is not published")
+		}
+	}
+	if m, ok := configuredModelMapping(model, currentSettings().ModelMappings); ok && m.Disabled {
+		return "", fmt.Errorf("model is not published")
+	}
 	e, err := normalizeReasoningEffort(effort)
 	if err != nil {
 		return "", err
@@ -342,7 +283,21 @@ func modelCatalog() []map[string]any {
 		if defaultReasoningLevel == "" {
 			defaultReasoningLevel = "medium"
 		}
+		scope := "all"
+		kind := "model_candidate"
+		tone := modelTone(m.ID)
+		if mapping, ok := configuredModelMapping(m.ID, currentSettings().ModelMappings); ok {
+			scope = normalizeModelScope(mapping.AccountScope)
+			tone = mapping.UpstreamTone
+			if mapping.RouteKind == "mode" {
+				kind = "response_mode"
+			}
+		}
+		if strings.EqualFold(tone, "magic") {
+			kind = "automatic_mode"
+		}
 		out = append(out, map[string]any{
+			"account_scope": scope, "routing_kind": kind, "upstream_tone": tone, "identity_verified": false,
 			"id": m.ID, "slug": m.ID, "display_name": displayName, "description": "Public model endpoint.",
 			"base_instructions": gatewayCodexBaseInstructions, "model_messages": codexModelMessages(),
 			"default_reasoning_level": defaultReasoningLevel, "object": "model", "owned_by": "gateway",

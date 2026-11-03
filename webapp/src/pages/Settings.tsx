@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { ModelSettings, type ModelMapping } from "./ModelSettings";
 import { t, LOCALES, setLocale, getLocale, type Locale } from "../i18n";
 
 const FLAGS: [string, string][] = [
@@ -27,15 +28,14 @@ const NUM_FIELDS: { key: string; id: string; label: string }[] = [
   { key: "transientThrottledCooldownSeconds", id: "fTransient", label: "Transient throttle cooldown (5-600s)" },
 ];
 
-type Mapping = { publicModel: string; upstreamTone: string; displayName?: string; defaultReasoningLevel?: string };
+type Mapping = ModelMapping;
 
 export function SettingsPage({ push }: { push: (m: string, k?: "success" | "error" | "info") => void }) {
   const [v, setV] = useState<Record<string, any>>({});
   const [mappings, setMappings] = useState<Mapping[]>([]);
-  const [tones, setTones] = useState<string[]>([]);
+  const [hideBuiltins, setHideBuiltins] = useState(false);
   const [autoStart, setAutoStart] = useState(false);
   const [autoStartSupported, setAutoStartSupported] = useState(true);
-  const [newModel, setNewModel] = useState<Mapping>({ publicModel: "", upstreamTone: "", displayName: "", defaultReasoningLevel: "medium" });
   const [locale, setLocaleState] = useState<Locale>(getLocale());
 
   const load = async () => {
@@ -44,7 +44,7 @@ export function SettingsPage({ push }: { push: (m: string, k?: "success" | "erro
       const s = d.settings ?? {};
       setV(s);
       setMappings(s.modelMappings ?? []);
-      setTones(d.upstreamTones ?? []);
+      setHideBuiltins(!!s.hideBuiltinModels);
       setAutoStartSupported(d.autoStartSupported !== false);
       setAutoStart(!!d.autoStart);
     } catch (e: any) {
@@ -66,7 +66,7 @@ export function SettingsPage({ push }: { push: (m: string, k?: "success" | "erro
 
   const save = async () => {
     try {
-      const body: Record<string, unknown> = { modelMappings: mappings };
+      const body: Record<string, unknown> = { modelMappings: mappings, hideBuiltinModels: hideBuiltins };
       for (const f of NUM_FIELDS) {
         const n = num(f.id);
         if (n !== undefined) body[f.key] = n;
@@ -87,24 +87,6 @@ export function SettingsPage({ push }: { push: (m: string, k?: "success" | "erro
     } catch (e: any) {
       push(String(e?.message ?? e), "error");
     }
-  };
-
-  const addMapping = () => {
-    const id = newModel.publicModel.trim();
-    if (!id) {
-      push(t("Enter public model id"), "error");
-      return;
-    }
-    if (!/^[A-Za-z0-9._-]{1,128}$/.test(id)) {
-      push(t("Invalid model id"), "error");
-      return;
-    }
-    if (mappings.some((m) => m.publicModel.toLowerCase() === id.toLowerCase())) {
-      push(t("Mapping already exists"), "error");
-      return;
-    }
-    setMappings([...mappings, { ...newModel, publicModel: id, displayName: newModel.displayName?.trim() || id }]);
-    setNewModel({ publicModel: "", upstreamTone: newModel.upstreamTone, displayName: "", defaultReasoningLevel: "medium" });
   };
 
   const gr = (k: string) => v[k] ?? "";
@@ -175,57 +157,7 @@ export function SettingsPage({ push }: { push: (m: string, k?: "success" | "erro
         </div>
       </div>
 
-      {/* Model mappings */}
-      <div className="card">
-        <div className="card-head"><span>{t("Model mappings")}</span></div>
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr><th>{t("Public model")}</th><th>{t("Upstream tone")}</th><th>{t("Display name")}</th><th>{t("Reasoning")}</th><th></th></tr>
-            </thead>
-            <tbody>
-              {mappings.length === 0 ? (
-                <tr><td colSpan={5} className="empty">—</td></tr>
-              ) : (
-                mappings.map((m, i) => (
-                  <tr key={`${m.publicModel}-${i}`}>
-                    <td><b>{m.publicModel}</b></td>
-                    <td style={{ fontSize: 12 }}>{m.upstreamTone}</td>
-                    <td style={{ fontSize: 12 }}>{m.displayName}</td>
-                    <td style={{ fontSize: 12 }}>{m.defaultReasoningLevel}</td>
-                    <td style={{ textAlign: "right" }}>
-                      <button className="btn btn-sm danger" onClick={() => setMappings(mappings.filter((_, j) => j !== i))}>{t("Delete")}</button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="card-body" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <div className="form-group" style={{ margin: 0, width: 160 }}>
-            <label className="form-label">{t("Public model")}</label>
-            <input className="form-input" style={{ minHeight: 32, padding: "5px 9px", fontSize: 12 }} value={newModel.publicModel} onChange={(e) => setNewModel({ ...newModel, publicModel: e.target.value })} placeholder="gpt-5.7-chat" />
-          </div>
-          <div className="form-group" style={{ margin: 0, width: 190 }}>
-            <label className="form-label">{t("Upstream tone")}</label>
-            <select className="form-input" style={{ minHeight: 32, padding: "5px 9px", fontSize: 12 }} value={newModel.upstreamTone} onChange={(e) => setNewModel({ ...newModel, upstreamTone: e.target.value })}>
-              {tones.map((s) => (<option key={s} value={s}>{s}</option>))}
-            </select>
-          </div>
-          <div className="form-group" style={{ margin: 0, width: 130 }}>
-            <label className="form-label">{t("Display name")}</label>
-            <input className="form-input" style={{ minHeight: 32, padding: "5px 9px", fontSize: 12 }} value={newModel.displayName} onChange={(e) => setNewModel({ ...newModel, displayName: e.target.value })} />
-          </div>
-          <div className="form-group" style={{ margin: 0, width: 110 }}>
-            <label className="form-label">{t("Reasoning")}</label>
-            <select className="form-input" style={{ minHeight: 32, padding: "5px 9px", fontSize: 12 }} value={newModel.defaultReasoningLevel} onChange={(e) => setNewModel({ ...newModel, defaultReasoningLevel: e.target.value })}>
-              {["none", "minimal", "low", "medium", "high", "xhigh"].map((s) => (<option key={s} value={s}>{s}</option>))}
-            </select>
-          </div>
-          <button className="btn btn-sm primary" style={{ marginBottom: 14 }} onClick={addMapping}>{t("Add")}</button>
-        </div>
-      </div>
+      <ModelSettings mappings={mappings} setMappings={setMappings} hideBuiltins={hideBuiltins} setHideBuiltins={setHideBuiltins} push={push} />
 
       {/* System */}
       <div className="card">

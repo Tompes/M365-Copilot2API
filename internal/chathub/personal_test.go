@@ -50,3 +50,9 @@ func TestPersonalRegionNoticeIsNotSuccessfulChat(t *testing.T) {
 		}
 	}
 }
+
+func TestExplicitModelScenarioBypassesPooledRoute(t *testing.T) {
+	if poolEligibleFor(Request{RouteScenario: "OfficeWebPaidCopilot"}) {
+		t.Fatal("explicit scenario must not reuse a socket dialed for another context")
+	}
+}

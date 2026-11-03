@@ -138,6 +138,10 @@ func (s *Server) chatWithAccount(ctx context.Context, accountID string, account 
 			account.PersonalLicense = stored.PersonalLicense
 		}
 	}
+	request = modelRouteRequest(ctx, request)
+	if err := s.checkAccountModelScope(ctx, accountID); err != nil {
+		return chathub.Result{}, err
+	}
 	release, err := s.accountConcurrency.Acquire(ctx, accountID)
 	if err != nil {
 		return chathub.Result{}, err
@@ -157,6 +161,10 @@ func (s *Server) chatWithAccountEvents(ctx context.Context, accountID string, ac
 			account.PersonalLicense = stored.PersonalLicense
 		}
 	}
+	request = modelRouteRequest(ctx, request)
+	if err := s.checkAccountModelScope(ctx, accountID); err != nil {
+		return chathub.Result{}, err
+	}
 	release, err := s.accountConcurrency.Acquire(ctx, accountID)
 	if err != nil {
 		return chathub.Result{}, err
@@ -175,6 +183,10 @@ func (s *Server) chatWithAccountReasoning(ctx context.Context, accountID string,
 		if stored, ok := s.tokens.Get(accountID); ok {
 			account.PersonalLicense = stored.PersonalLicense
 		}
+	}
+	request = modelRouteRequest(ctx, request)
+	if err := s.checkAccountModelScope(ctx, accountID); err != nil {
+		return chathub.Result{}, err
 	}
 	release, err := s.accountConcurrency.Acquire(ctx, accountID)
 	if err != nil {

@@ -201,6 +201,7 @@ type Account struct {
 }
 
 type Request struct {
+	RouteScenario         string // Explicit per-model scenario; never an entitlement claim.
 	personal              bool
 	Text                  string
 	Tone                  string
@@ -378,7 +379,7 @@ func (c *Client) ChatWithReasoning(ctx context.Context, acc Account, req Request
 // the WebSocket connection pool. Only fresh requests without caller-supplied
 // conversation/session IDs qualify: pooled sockets carry random URL-bound IDs.
 func poolEligibleFor(req Request) bool {
-	return req.ConversationID == "" && req.SessionID == ""
+	return req.RouteScenario == "" && req.ConversationID == "" && req.SessionID == ""
 }
 
 func (c *Client) chatWithHandlers(ctx context.Context, acc Account, req Request, onDelta func(string) error, onEvent StreamHandler) (Result, error) {
@@ -393,6 +394,12 @@ func (c *Client) chatWithHandlers(ctx context.Context, acc Account, req Request,
 			return Result{}, fmt.Errorf("personal accounts currently support text chat only")
 		}
 	}
+	if req.RouteScenario != "" {
+		req.Scenario = req.RouteScenario
+		if req.Scenario == "OfficeWebPaidCopilot" {
+			req.LicenseType = "Premium"
+		}
+	}
 	startedAt := time.Now()
 	log.Printf("chathub timing start prompt_len=%d", len(req.Text))
 	if acc.AccessToken == "" || acc.OID == "" || acc.TID == "" {
@@ -401,7 +408,7 @@ func (c *Client) chatWithHandlers(ctx context.Context, acc Account, req Request,
 	if strings.TrimSpace(req.Text) == "" && len(req.Attachments) == 0 {
 		return Result{}, fmt.Errorf("empty prompt and no attachments")
 	}
-	if req.Tone == "" {
+	if req.Tone == "" || strings.EqualFold(req.Tone, "magic") {
 		req.Tone = defaultTone
 	}
 	firstTurn := req.Started

@@ -1,0 +1,14 @@
+internal/web/model_management.go
+  h_cbdcbe06072a7d 153-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "2.0.13",
+  "base_commit_sha": "c4898a122df8ccfe0cdc9f9dbf85da79738531c1",
+  "prompts": {},
+  "humans": {
+    "h_cbdcbe06072a7d": {
+      "author": "daili07 <daili07@meituan.com>"
+    }
+  }
+}

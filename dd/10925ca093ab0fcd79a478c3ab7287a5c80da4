@@ -1,0 +1,20 @@
+docs/personal-accounts.md
+  h_cbdcbe06072a7d 24-31
+internal/auth/personal.go
+  h_cbdcbe06072a7d 24,45,47-51,79-89,93-96,104-106
+internal/auth/personal_test.go
+  h_cbdcbe06072a7d 124-173
+internal/auth/cache.go
+  h_cbdcbe06072a7d 23,435,455,605-609
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "2.0.13",
+  "base_commit_sha": "dd10925ca093ab0fcd79a478c3ab7287a5c80da4",
+  "prompts": {},
+  "humans": {
+    "h_cbdcbe06072a7d": {
+      "author": "daili07 <daili07@meituan.com>"
+    }
+  }
+}

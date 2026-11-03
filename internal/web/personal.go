@@ -46,22 +46,27 @@ func (s *Server) importPersonalAccount(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, 400, "personal_auth_error", err.Error())
 		return
 	}
+	s.saveVerifiedPersonal(w, r, tok)
+}
+
+func (s *Server) saveVerifiedPersonal(w http.ResponseWriter, r *http.Request, tok auth.TokenSet) bool {
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	result, err := s.chat.Chat(ctx, chathub.Account{AccessToken: tok.AccessToken, OID: tok.HomeOID, TID: tok.TenantID, PersonalLicense: tok.PersonalLicense}, chathub.Request{Text: "Reply only OK."})
 	if errors.Is(err, chathub.ErrRegionUnavailable) {
 		writeOpenAIError(w, http.StatusBadGateway, "personal_region_unavailable", "Microsoft reports Copilot is unavailable in the current region. No account was saved.")
-		return
+		return false
 	}
 	if err != nil || !strings.EqualFold(strings.Trim(strings.TrimSpace(result.Text), ".!。！"), "OK") {
 		writeOpenAIError(w, 502, "personal_chat_error", "Personal chat verification failed. Check the selected plan and sign in again; no account was saved.")
-		return
+		return false
 	}
 	tok.DisplayName = "Personal Copilot (" + tok.PersonalLicense + ")"
 	acc, err := s.tokens.Upsert(tok)
 	if err != nil {
 		writeOpenAIError(w, 500, "internal_error", "could not save personal account")
-		return
+		return false
 	}
 	jsonOut(w, map[string]any{"status": "verified", "account": map[string]any{"id": acc.ID, "accountType": "personal", "personalLicense": acc.PersonalLicense, "expiresAt": acc.ExpiresAt, "autoRefresh": acc.RefreshToken != "", "nativeRefresh": acc.PersonalNative}})
+	return true
 }

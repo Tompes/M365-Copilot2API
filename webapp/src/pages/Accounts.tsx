@@ -37,6 +37,44 @@ export function AccountsPage({ push }: { push: Push }) {
   const [personalPlan, setPersonalPlan] = useState("Free");
   const [personalBusy, setPersonalBusy] = useState(false);
   const [personalJSON, setPersonalJSON] = useState("");
+  type DeviceFlow = { id: string; userCode: string; verificationUri: string; expiresAt: string; interval: number };
+  const [deviceFlow, setDeviceFlow] = useState<DeviceFlow | null>(null);
+  const [deviceStarting, setDeviceStarting] = useState(false);
+  const [deviceMessage, setDeviceMessage] = useState("");
+  const deviceGeneration = useRef(0);
+  const startPersonalDevice = async () => {
+    const generation = ++deviceGeneration.current;
+    setDeviceStarting(true); setDeviceFlow(null); setDeviceMessage("");
+    try {
+      const flow = await api("/api/auth/personal/device/start", { method: "POST", body: JSON.stringify({ license_type: personalPlan }) });
+      if (generation === deviceGeneration.current) { setDeviceFlow(flow); setDeviceMessage(t("Waiting for Microsoft sign-in…")); }
+    } catch (e: any) { if (generation === deviceGeneration.current) setDeviceMessage(String(e?.message ?? e)); }
+    finally { if (generation === deviceGeneration.current) setDeviceStarting(false); }
+  };
+  const cancelPersonalDevice = () => {
+    ++deviceGeneration.current;
+    if (deviceFlow) void api("/api/auth/personal/device/cancel", { method: "POST", body: JSON.stringify({ id: deviceFlow.id }) }).catch(() => {});
+    setDeviceFlow(null); setDeviceStarting(false); setDeviceMessage("");
+  };
+  useEffect(() => {
+    if (!deviceFlow) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      if (Date.now() >= Date.parse(deviceFlow.expiresAt)) { setDeviceFlow(null); setDeviceMessage(t("Authorization expired. Start again.")); return; }
+      try {
+        const result = await api("/api/auth/personal/device/poll", { method: "POST", body: JSON.stringify({ id: deviceFlow.id }) });
+        if (stopped) return;
+        if (result.status === "verified") {
+          setDeviceFlow(null); setDeviceMessage(t("Personal account verified and added"));
+          push(t("Personal account verified and added"), "success"); await load(); return;
+        }
+        timer = setTimeout(poll, Math.max(5, result.interval || deviceFlow.interval) * 1000);
+      } catch (e: any) { if (!stopped) { setDeviceFlow(null); setDeviceMessage(String(e?.message ?? e)); } }
+    };
+    timer = setTimeout(poll, deviceFlow.interval * 1000);
+    return () => { stopped = true; clearTimeout(timer); };
+  }, [deviceFlow]);
   const importPersonalJSON = async (raw: string) => {
     setPersonalBusy(true);
     try {
@@ -232,6 +270,22 @@ export function AccountsPage({ push }: { push: Push }) {
         <div className="card-body">
           <div className="highlight-box" style={{ marginBottom: 16 }}>
             <b>{t("Personal Microsoft account")}</b>
+            <p>{t("Sign in on Microsoft's website with the device code below. This gateway will verify the account, save it and renew credentials automatically.")}</p>
+            <label className="form-label" htmlFor="personal-plan">{t("Personal Copilot plan")}</label>
+            <select id="personal-plan" className="form-input" value={personalPlan} onChange={(e) => setPersonalPlan(e.target.value)} disabled={deviceStarting || !!deviceFlow || personalBusy}>
+              <option value="Free">Free</option><option value="Premium">Premium</option>
+            </select>
+            <button className="btn primary" style={{ marginTop: 12 }} disabled={deviceStarting || !!deviceFlow || personalBusy} onClick={() => void startPersonalDevice()}>{deviceStarting ? t("Starting authorization…") : t("Authorize personal account")}</button>
+            {deviceFlow && <div style={{ marginTop: 16 }}>
+              <label className="form-label">{t("Microsoft device code")}</label>
+              <div style={{ fontSize: 28, fontFamily: "monospace", letterSpacing: 3, marginBottom: 12 }}><strong>{deviceFlow.userCode}</strong></div>
+              <a className="btn primary" href={deviceFlow.verificationUri} target="_blank" rel="noopener noreferrer">{t("Open Microsoft sign-in")}</a>{" "}
+              <button className="btn" onClick={cancelPersonalDevice}>{t("Cancel authorization")}</button>
+              <p>{t("Enter this device code on Microsoft's page. For Authenticator number matching, use the number shown on that Microsoft page.")}</p>
+              <p>{t("Expires at")}: {new Date(deviceFlow.expiresAt).toLocaleTimeString()}</p>
+            </div>}
+            {deviceMessage && <p role="status" aria-live="polite">{deviceMessage}</p>}
+            <details style={{ marginTop: 16 }}><summary>{t("Manual import (backup)")}</summary>
             <p>{t("Copy the script, open Microsoft Copilot and run it in DevTools Console. Keep the page open, start a new chat and send a short message. Paste the resulting JSON below.")}</p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
               <button className="btn" onClick={copyPersonalScript}>{t("Copy Console script")}</button>
@@ -242,14 +296,15 @@ export function AccountsPage({ push }: { push: Push }) {
             <textarea data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false" id="personal-credentials" className="form-input" rows={6} value={personalJSON} onChange={(e) => setPersonalJSON(e.target.value)} disabled={personalBusy} autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder={'{"access_token":"…","oid":"…","expires_at":…,"license_type":"Free"}'} style={{ resize: "vertical", fontFamily: "monospace", marginBottom: 12 }} />
             <p>{t("Credentials stay in memory until you submit them to this gateway. Import sends one verification message before saving. Without a refresh token, collect again after expiry.")}</p>
             <label className="form-label">{t("Fallback plan for JSON without license_type")}</label>
-            <select className="form-input" aria-label={t("Personal Copilot plan")} value={personalPlan} onChange={(e) => setPersonalPlan(e.target.value)} disabled={personalBusy}>
+            <select className="form-input" aria-label={t("Personal Copilot plan")} value={personalPlan} onChange={(e) => setPersonalPlan(e.target.value)} disabled={personalBusy || !!deviceFlow || deviceStarting}>
               <option value="Free">Free</option><option value="Premium">Premium</option>
             </select>
-            <button className="btn primary" style={{ marginTop: 8, marginRight: 8 }} disabled={personalBusy || !personalJSON.trim()} onClick={() => void importPersonalJSON(personalJSON)}>{personalBusy ? t("Verifying personal account…") : t("Verify and add personal account")}</button>
+            <button className="btn primary" style={{ marginTop: 8, marginRight: 8 }} disabled={personalBusy || !!deviceFlow || deviceStarting || !personalJSON.trim()} onClick={() => void importPersonalJSON(personalJSON)}>{personalBusy ? t("Verifying personal account…") : t("Verify and add personal account")}</button>
             <label className="btn" style={{ marginTop: 8 }}>
               {personalBusy ? t("Verifying personal account…") : t("Import personal credential file")}
-              <input type="file" accept=".json,application/json" disabled={personalBusy} style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void importPersonalFile(f); }} />
+              <input type="file" accept=".json,application/json" disabled={personalBusy || !!deviceFlow || deviceStarting} style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void importPersonalFile(f); }} />
             </label>
+            </details>
           </div>
           <p><b>{t("Work or school account")}</b></p>
           <div className="onb-steps" style={{ marginBottom: 16 }}>

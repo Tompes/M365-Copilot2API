@@ -28,6 +28,18 @@ export const LOCALES: { id: Locale; label: string }[] = [
 ];
 
 const dict: Record<string, Partial<Record<Locale, string>>> = {
+  "Authorize personal account": { "zh-CN": "授权个人账号" },
+  "Starting authorization…": { "zh-CN": "正在启动授权…" },
+  "Waiting for Microsoft sign-in…": { "zh-CN": "等待完成微软登录…" },
+  "Authorization expired. Start again.": { "zh-CN": "授权已过期，请重新开始。" },
+  "Microsoft device code": { "zh-CN": "微软设备码" },
+  "Open Microsoft sign-in": { "zh-CN": "打开微软登录页" },
+  "Cancel authorization": { "zh-CN": "取消授权" },
+  "Expires at": { "zh-CN": "过期时间" },
+  "Manual import (backup)": { "zh-CN": "手动导入（备用）" },
+  "Sign in on Microsoft's website with the device code below. This gateway will verify the account, save it and renew credentials automatically.": { "zh-CN": "使用下方设备码在微软官网登录。完成后，网关会验证并保存账号，自动续期凭证。" },
+  "Enter this device code on Microsoft's page. For Authenticator number matching, use the number shown on that Microsoft page.": { "zh-CN": "在微软页面输入此设备码。如 Authenticator 要求匹配数字，请使用微软登录页面显示的数字。" },
+
   "Personal Microsoft account": { "zh-CN": "微软个人账号" },
   "Work or school account": { "zh-CN": "工作或学校账号" },
   "Personal Copilot plan": { "zh-CN": "个人 Copilot 套餐" },

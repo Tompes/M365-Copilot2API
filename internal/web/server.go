@@ -133,6 +133,8 @@ func (s *Server) confirmRateLimitNotice(ctx context.Context, acc auth.AccountTok
 }
 
 type Server struct {
+	personalDevices      personalDeviceStore
+	personalAuthorizer   personalDeviceAuthorizer
 	mu                   sync.Mutex
 	tokens               *auth.Store
 	accountPool          *accountHealth
@@ -548,6 +550,9 @@ func (s *Server) Routes() http.Handler {
 	m.HandleFunc("/api/accounts/provision", s.provisionAccount)
 	m.HandleFunc("/api/accounts/bind-proxy", s.bindProxy)
 	m.HandleFunc("/api/auth/personal/import", s.importPersonalAccount)
+	m.HandleFunc("/api/auth/personal/device/start", s.startPersonalDevice)
+	m.HandleFunc("/api/auth/personal/device/poll", s.pollPersonalDevice)
+	m.HandleFunc("/api/auth/personal/device/cancel", s.cancelPersonalDevice)
 	m.HandleFunc("/api/auth/start", s.startPKCE)
 	m.HandleFunc("/api/auth/status", s.pkceStatus)
 	m.HandleFunc("/api/auth/callback", s.callbackPKCE)

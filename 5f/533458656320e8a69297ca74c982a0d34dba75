@@ -1,0 +1,14 @@
+internal/auth/personal_device.go
+  h_cbdcbe06072a7d 63-69,80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "2.0.13",
+  "base_commit_sha": "5f533458656320e8a69297ca74c982a0d34dba75",
+  "prompts": {},
+  "humans": {
+    "h_cbdcbe06072a7d": {
+      "author": "daili07 <daili07@meituan.com>"
+    }
+  }
+}

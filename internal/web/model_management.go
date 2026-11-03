@@ -150,7 +150,16 @@ func (s *Server) probeModel(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	start := time.Now()
 	cfg := s.settings.get()
-	res, err := s.chatWithAccount(ctx, a.ID, chathub.Account{AccessToken: a.AccessToken, OID: a.OID, TID: a.TID}, chathub.Request{Text: "Reply only OK.", Tone: b.Tone, RouteScenario: b.Scenario, LicenseType: cfg.LicenseType, Scenario: cfg.Scenario})
+	// Candidate rejection is route-specific evidence, not evidence that the
+	// entire account credential is unhealthy. Keep normal concurrency limits,
+	// but do not feed exploratory failures into account/global circuit breakers.
+	release, err := s.accountConcurrency.Acquire(ctx, a.ID)
+	if err != nil {
+		writeUpstreamError(w, err)
+		return
+	}
+	defer release()
+	res, err := s.accountClient(a.ID).Chat(ctx, chathub.Account{AccessToken: a.AccessToken, OID: a.OID, TID: a.TID, PersonalLicense: a.PersonalLicense}, chathub.Request{Text: "Reply only OK.", Tone: b.Tone, RouteScenario: b.Scenario, LicenseType: cfg.LicenseType, Scenario: cfg.Scenario})
 	status := "request_failed"
 	if err == nil && strings.EqualFold(strings.Trim(strings.TrimSpace(res.Text), ".!。！"), "OK") {
 		status = "request_ok_identity_unconfirmed"

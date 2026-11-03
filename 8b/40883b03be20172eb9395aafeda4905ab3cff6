@@ -1,0 +1,22 @@
+docs/model-management.md
+  h_cbdcbe06072a7d 1-36
+internal/web/codex_catalog.go
+  h_cbdcbe06072a7d 111-114,147-149,151-159,210-217,286-297,300
+internal/chathub/personal_test.go
+  h_cbdcbe06072a7d 53-58
+internal/web/account_concurrency.go
+  h_cbdcbe06072a7d 141-144,164-166,187-189
+internal/chathub/client.go
+  h_cbdcbe06072a7d 204,382,397-402,411
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "2.0.13",
+  "base_commit_sha": "8b40883b03be20172eb9395aafeda4905ab3cff6",
+  "prompts": {},
+  "humans": {
+    "h_cbdcbe06072a7d": {
+      "author": "daili07 <daili07@meituan.com>"
+    }
+  }
+}

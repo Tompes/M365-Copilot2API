@@ -1,0 +1,22 @@
+.dockerignore
+  h_cbdcbe06072a7d 1-17
+README.md
+  h_cbdcbe06072a7d 1-2
+README.en.md
+  h_cbdcbe06072a7d 1-2
+internal/auth/cache.go
+  h_cbdcbe06072a7d 23,433,444-446,450,599-606
+docs/personal-accounts.md
+  h_cbdcbe06072a7d 1-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "2.0.13",
+  "base_commit_sha": "15981a43d2425d14e2a5add37d7daa3e7ec637fe",
+  "prompts": {},
+  "humans": {
+    "h_cbdcbe06072a7d": {
+      "author": "daili07 <daili07@meituan.com>"
+    }
+  }
+}

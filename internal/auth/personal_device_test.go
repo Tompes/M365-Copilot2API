@@ -12,6 +12,7 @@ import (
 
 func TestPersonalDeviceProtocol(t *testing.T) {
 	state := "authorization_pending"
+	verificationURI := "https://www.microsoft.com/link"
 	oid := "11111111-2222-3333-4444-555555555555"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
@@ -22,7 +23,7 @@ func TestPersonalDeviceProtocol(t *testing.T) {
 			if r.Form.Get("scope") != "openid profile offline_access" {
 				t.Error("unexpected scope")
 			}
-			fmt.Fprint(w, `{"device_code":"private-device-secret","user_code":"ABCDE1234","verification_uri":"https://untrusted.invalid","expires_in":900,"interval":5}`)
+			fmt.Fprintf(w, `{"device_code":"private-device-secret","user_code":"ABCDE1234","verification_uri":%q,"expires_in":900,"interval":5}`, verificationURI)
 			return
 		}
 		if r.Form.Get("device_code") != "private-device-secret" || r.Form.Get("grant_type") != "urn:ietf:params:oauth:grant-type:device_code" {
@@ -39,7 +40,7 @@ func TestPersonalDeviceProtocol(t *testing.T) {
 	defer srv.Close()
 	c := PersonalDeviceClient{Client: srv.Client(), BaseURL: srv.URL}
 	d, err := c.Start(context.Background())
-	if err != nil || d.VerificationURI != "https://microsoft.com/devicelogin" {
+	if err != nil || d.VerificationURI != "https://www.microsoft.com/link" {
 		t.Fatalf("start: %v", err)
 	}
 	for _, status := range []string{"authorization_pending", "slow_down"} {
@@ -58,5 +59,9 @@ func TestPersonalDeviceProtocol(t *testing.T) {
 	p, status, err := c.Poll(context.Background(), d.DeviceCode)
 	if err != nil || status != "authorized" || p.OID != oid || !p.NativeRefresh || p.RefreshToken != "native-refresh" || p.AccessToken != "" {
 		t.Fatalf("grant not suitable for native chat exchange: %v", err)
+	}
+	verificationURI = "https://untrusted.invalid"
+	if _, err := c.Start(context.Background()); err == nil {
+		t.Fatal("untrusted verification address accepted")
 	}
 }

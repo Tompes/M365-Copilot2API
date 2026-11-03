@@ -60,7 +60,13 @@ func (c PersonalDeviceClient) Start(ctx context.Context) (DeviceCode, error) {
 	if status != 200 || d.Error != "" {
 		return DeviceCode{}, &OAuthError{Code: "personal_device_start_failed", HTTPStatus: status, AADSTS: aadstsCode(d.ErrorDesc)}
 	}
-	// Display only the known Microsoft sign-in destination, never an arbitrary URI.
+	// Consumer device codes use /link; organization codes can use /devicelogin.
+	// Preserve the Microsoft-provided destination, with an exact allowlist.
+	switch d.VerificationURI {
+	case "https://www.microsoft.com/link", "https://microsoft.com/link", "https://microsoft.com/devicelogin", "https://www.microsoft.com/devicelogin":
+	default:
+		return DeviceCode{}, fmt.Errorf("unexpected Microsoft device verification address")
+	}
 	if d.DeviceCode == "" || d.UserCode == "" || d.ExpiresIn <= 0 || d.ExpiresIn > 1800 {
 		return DeviceCode{}, fmt.Errorf("invalid personal device authorization response")
 	}
@@ -71,7 +77,7 @@ func (c PersonalDeviceClient) Start(ctx context.Context) (DeviceCode, error) {
 	if interval > 60 {
 		interval = 60
 	}
-	return DeviceCode{DeviceCode: d.DeviceCode, UserCode: d.UserCode, VerificationURI: "https://microsoft.com/devicelogin", Interval: interval, ExpiresIn: d.ExpiresIn, ExpiresAt: time.Now().Add(time.Duration(d.ExpiresIn) * time.Second)}, nil
+	return DeviceCode{DeviceCode: d.DeviceCode, UserCode: d.UserCode, VerificationURI: d.VerificationURI, Interval: interval, ExpiresIn: d.ExpiresIn, ExpiresAt: time.Now().Add(time.Duration(d.ExpiresIn) * time.Second)}, nil
 }
 
 // Poll returns pending/slow_down without treating them as authentication failures.

@@ -20,6 +20,7 @@ import (
 )
 
 type AccountToken struct {
+	PersonalLicense   string    `json:"personalLicense,omitempty"`
 	ID                string    `json:"id"`
 	Email             string    `json:"email"`
 	DisplayName       string    `json:"displayName,omitempty"`
@@ -428,21 +429,25 @@ func (s *Store) Upsert(tok TokenSet) (AccountToken, error) {
 		id = fmt.Sprintf("account-%s-%04x", time.Now().Format("150405"), cryptoRandUint16())
 	}
 	acc := AccountToken{
-		ID:           id,
-		Email:        tok.Email,
-		DisplayName:  tok.DisplayName,
-		Status:       "online",
-		AccessToken:  tok.AccessToken,
-		RefreshToken: tok.RefreshToken,
-		ExpiresAt:    tok.ExpiresAt,
-		UpdatedAt:    time.Now(),
-		OID:          firstNonEmpty(tok.HomeOID, id),
-		TID:          tok.TenantID,
-		ClientID:     ClientID(),
+		ID:              id,
+		PersonalLicense: tok.PersonalLicense,
+		Email:           tok.Email,
+		DisplayName:     tok.DisplayName,
+		Status:          "online",
+		AccessToken:     tok.AccessToken,
+		RefreshToken:    tok.RefreshToken,
+		ExpiresAt:       tok.ExpiresAt,
+		UpdatedAt:       time.Now(),
+		OID:             firstNonEmpty(tok.HomeOID, id),
+		TID:             tok.TenantID,
+		ClientID:        ClientID(),
+	}
+	if acc.TID == PersonalChatTenant {
+		acc.ClientID = DefaultClientID
 	}
 	found := false
 	for i, existing := range s.data.Accounts {
-		if existing.ID == acc.ID || (acc.Email != "" && existing.Email == acc.Email) {
+		if (existing.TID == PersonalChatTenant) == (acc.TID == PersonalChatTenant) && (existing.ID == acc.ID || (acc.Email != "" && existing.Email == acc.Email)) {
 			if acc.RefreshToken == "" {
 				acc.RefreshToken = existing.RefreshToken
 			}
@@ -591,7 +596,14 @@ func (s *Store) refreshInflight(acc AccountToken) (AccountToken, error) {
 	if acc.TID != "" && acc.ClientID != DeviceClientID() && strings.Contains(endpoint, "/common/") {
 		endpoint = strings.Replace(endpoint, "/common/", "/"+acc.TID+"/", 1)
 	}
-	tok, err := Refresh(acc.RefreshToken, acc.ClientID, endpoint, acc.OID, acc.TID)
+	var tok TokenSet
+	var err error
+	if acc.TID == PersonalChatTenant {
+		tok, err = RefreshPersonal(acc.RefreshToken, acc.OID)
+		tok.PersonalLicense = acc.PersonalLicense
+	} else {
+		tok, err = Refresh(acc.RefreshToken, acc.ClientID, endpoint, acc.OID, acc.TID)
+	}
 	if err != nil {
 		s.mu.Lock()
 		for i, a := range s.data.Accounts {

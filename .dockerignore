@@ -1,0 +1,17 @@
+.git
+.env
+.env.*
+!.env.example
+secrets
+.data
+data
+tmp_lab
+.venv*
+**/node_modules
+**/__pycache__
+*.log
+*.pid
+accounts.json
+sessions.json
+conversations.json
+m365-copilot2api

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"m365-copilot2api/internal/auth"
 	"m365-copilot2api/internal/outbound"
 	"net/http"
 	"net/url"
@@ -26,6 +27,8 @@ import (
 // ChatHub sometimes sends through the text channel instead of HTTP 429.
 // Callers must independently probe the account before marking it unhealthy.
 var ErrRateLimitNotice = errors.New("upstream rate-limit notice")
+
+var ErrRegionUnavailable = errors.New("Copilot is not available in the current region")
 
 var ErrEmptyCompletion = errors.New("upstream returned empty completion; tone may be unavailable for this tenant")
 
@@ -191,12 +194,14 @@ const (
 const variants = "EnableMcpServerWidgets,feature.EnableMcpServerWidgets,feature.EnableLuForChatCIQ,feature.enableChatCIQPlugin,EnableRequestPlugins,feature.EnableSensitivityLabels,EnableUnsupportedUrlDetector,feature.IsCustomEngineCopilotEnabled,feature.bizchatfluxv3,feature.enablechatpages,feature.enableCodeCanvas,feature.turnOnDARecommendation,feature.IsStreamingModeInChatRequestEnabled,IncludeSourceAttributionsConcise,SkipPublishEmptyMessage,feature.EnableDeduplicatingSourceAttributions,Enable3PActionProgressMessages,feature.enableClientWebRtc,feature.EnableMeetingRecapOfSeriesMeetingWithCiq,feature.EnableReferencesListCompleteSignal,feature.StorageMessageSplitDisabled,feature.cwcallowedos,feature.disabledisallowedmsgs,feature.enableCitationsForSynthesisData,feature.enableGenerateGraphicArtOptionsSet,cdximagen,feature.EnableUpdatedUXForConfirmationDialog,feature.EnableClientFileURLSupportForOfficeWebPaidCopilot,feature.EnableDesignEditorImageGrounding,feature.EnableDesignerEditor,feature.OfficeWebToHelix,feature.OfficeDesktopToHelix,feature.M365TeamsHubToHelix,feature.OwaHubToHelix,feature.MonarchHubToHelix,feature.Win32OutlookHubToHelix,feature.MacOutlookHubToHelix,Agt_bizchat_enableGpt5ForHelix,feature.EnableImageGenInsufficientTokensThrottled,feature.EnableImageGenSystemCapacityThrottled,feature.EnableConversationShareApis,feature.IsCitationsReferencesOutputEnabled,feature.enableDeltaStreamingForReferences,feature.enableIncludeReferencesInDeltaResponse,feature.enablereferencesforagents,feature.EnableMergingPureDeltas,feature.EnableRemoveStreamingMode,feature.EnableCodeInterpreterConversion,agt_module_attr_enableReferencesForCodeInterpreter,agt_module_enableCodeInterpreterHallucinatedUrlFilter,SingletonEnvOn,cdxenablefccinmainline,EnableComposeWidget,feature.EnableContentApiandDocTypeHtmlInRichAnswers,cdxgrounding_api_v2_rich_web_answers_reference_bottom_force,cdxenablerenderforisocomp,feature.EnableSkipRehydrationForSpeCIdImages,feature.EnablePersonalization,feature.EnableBase64DataInMessageAnnotations,feature.EnableSkipEmittingMessageOnFlush,feature.EnableRemoveEmptySourceAttributions,agt_researcheragent_enableMemoryRead"
 
 type Account struct {
-	AccessToken string
-	OID         string
-	TID         string
+	PersonalLicense string
+	AccessToken     string
+	OID             string
+	TID             string
 }
 
 type Request struct {
+	personal              bool
 	Text                  string
 	Tone                  string
 	ConversationID        string
@@ -377,6 +382,17 @@ func poolEligibleFor(req Request) bool {
 }
 
 func (c *Client) chatWithHandlers(ctx context.Context, acc Account, req Request, onDelta func(string) error, onEvent StreamHandler) (Result, error) {
+	if acc.TID == auth.PersonalChatTenant {
+		req.personal = true
+		req.LicenseType = acc.PersonalLicense
+		if req.LicenseType == "" {
+			req.LicenseType = "Free"
+		}
+		req.Scenario = "OfficeWeb" + req.LicenseType + "ConsumerCopilot"
+		if len(req.Attachments) > 0 {
+			return Result{}, fmt.Errorf("personal accounts currently support text chat only")
+		}
+	}
 	startedAt := time.Now()
 	log.Printf("chathub timing start prompt_len=%d", len(req.Text))
 	if acc.AccessToken == "" || acc.OID == "" || acc.TID == "" {
@@ -395,7 +411,7 @@ func (c *Client) chatWithHandlers(ctx context.Context, acc Account, req Request,
 	// (community PR #62/#86 finding). Fresh requests reuse; continuations dial.
 	// poolEligible also gates Return: only a fresh, healthy, completed request
 	// hands its connection back to the pool.
-	poolEligible := poolEligibleFor(req)
+	poolEligible := poolEligibleFor(req) && !req.personal
 	if poolEligible {
 		req.SessionID = uuid.NewString()
 		req.ConversationID = uuid.NewString()
@@ -1034,6 +1050,10 @@ func (c *Client) chatWithHandlers(ctx context.Context, acc Account, req Request,
 					returnConn = false
 					return Result{}, ErrRateLimitNotice
 				}
+				if req.personal && personalRegionUnavailable(final) {
+					returnConn = false
+					return Result{}, ErrRegionUnavailable
+				}
 				text, ferr := finalizeText(streamed.String(), final, skippedSnapshots, emitDelta)
 				if ferr != nil {
 					returnConn = false
@@ -1049,6 +1069,10 @@ func (c *Client) chatWithHandlers(ctx context.Context, acc Account, req Request,
 				if rateLimited(text) {
 					returnConn = false
 					return Result{}, ErrRateLimitNotice
+				}
+				if req.personal && personalRegionUnavailable(text) {
+					returnConn = false
+					return Result{}, ErrRegionUnavailable
 				}
 				if text == "" {
 					returnConn = false
@@ -1171,6 +1195,15 @@ func BuildWSURLWithOptions(acc Account, sessionID, conversationID, requestID, li
 		q.Set("disableMemory", "1")
 	}
 	q.Set("isEdu", "false")
+	if acc.TID == auth.PersonalChatTenant {
+		q.Set("XRoutingParameterSessionKey", acc.OID)
+		license := acc.PersonalLicense
+		if license == "" {
+			license = "Free"
+		}
+		q.Set("licenseType", license)
+		q.Set("scenario", "OfficeWeb"+license+"ConsumerCopilot")
+	}
 
 	// url.Values encodes quotes; probe used safe='",' so keep quotes unescaped-ish.
 	// Gorilla/url will encode " to %22 which MS accepts.
@@ -1562,6 +1595,21 @@ func chatPayload(req Request, requestID string, firstTurn bool) string {
 		},
 		"target": "Metrics",
 		"type":   1,
+	}
+	if req.personal {
+		clientInfo["clientPlatform"] = "copilotcom-web"
+		clientInfo["clientEntrypoint"] = "copilotcom-officeweb"
+		delete(message, "attachments")
+		message["clientPreferences"] = map[string]any{"executionControls": map[string]any{"web": map[string]any{}, "work": map[string]any{}}}
+		args := chat["arguments"].([]any)[0].(map[string]any)
+		args["requestId"] = requestID
+		args["gpts"] = []any{map[string]any{
+			"id": "cwc-as-gpt-scenario", "source": "BuiltInAgents",
+			"clientOverrides": map[string]any{
+				"capabilities":            []any{map[string]any{"name": "WebSearch"}, map[string]any{"name": "WorkSearch"}},
+				"capabilities@odata.type": "Collection(String)",
+			},
+		}}
 	}
 	b1, _ := json.Marshal(chat)
 	b2, _ := json.Marshal(metrics)

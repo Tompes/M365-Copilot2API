@@ -4,11 +4,14 @@ import { FlaskConical, Play } from "lucide-react";
 import { api } from "../api";
 import { t } from "../i18n";
 import { Modal } from "../components";
+import personalConsoleScript from "../../../scripts/personal-console.js?raw";
 
 type Account = {
   id: string;
   email: string;
   displayName?: string;
+  accountType?: string;
+  personalLicense?: string;
   status: string;
   scheduleEnabled: boolean;
   webSearchEnabled: boolean;
@@ -28,6 +31,35 @@ export function AccountsPage({ push }: { push: Push }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "online" | "cooldown" | "offline">("all");
   const [loading, setLoading] = useState(true);
+
+  const [personalPlan, setPersonalPlan] = useState("Free");
+  const [personalBusy, setPersonalBusy] = useState(false);
+  const [personalJSON, setPersonalJSON] = useState("");
+  const importPersonalJSON = async (raw: string) => {
+    setPersonalBusy(true);
+    try {
+      if (new TextEncoder().encode(raw).length > 65536) throw new Error(t("Credential file is too large"));
+      let credentials;
+      try { credentials = JSON.parse(raw); }
+      catch { throw new Error(t("Invalid personal credential file")); }
+      if (!credentials || typeof credentials !== "object" || Array.isArray(credentials)) throw new Error(t("Invalid personal credential file"));
+      await api("/api/auth/personal/import", { method: "POST", body: JSON.stringify({ ...credentials, license_type: credentials.license_type || personalPlan }) });
+      setPersonalJSON("");
+      push(t("Personal account verified and added"), "success");
+      await load();
+    } catch (e: any) { push(String(e?.message ?? e), "error"); }
+    finally { setPersonalBusy(false); }
+  };
+  const importPersonalFile = async (file: File) => {
+    try {
+      if (file.size > 65536) throw new Error(t("Credential file is too large"));
+      await importPersonalJSON(await file.text());
+    } catch { push(t("Could not read credential file"), "error"); }
+  };
+  const copyPersonalScript = async () => {
+    try { await navigator.clipboard.writeText(personalConsoleScript); push(t("Console script copied"), "success"); }
+    catch { push(t("Copy the script from the expanded section below"), "info"); }
+  };
 
   const [callback, setCallback] = useState("");
   const [authState, setAuthState] = useState("");
@@ -196,6 +228,28 @@ export function AccountsPage({ push }: { push: Push }) {
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-head"><span className="card-title">{t("Add account")}</span></div>
         <div className="card-body">
+          <div className="highlight-box" style={{ marginBottom: 16 }}>
+            <b>{t("Personal Microsoft account")}</b>
+            <p>{t("Copy the script, open Microsoft Copilot and run it in DevTools Console. Keep the page open, start a new chat and send a short message. Paste the resulting JSON below.")}</p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+              <button className="btn" onClick={copyPersonalScript}>{t("Copy Console script")}</button>
+              <a className="btn" href="https://m365.cloud.microsoft/chat" target="_blank" rel="noopener noreferrer">{t("Open Microsoft Copilot")}</a>
+            </div>
+            <details style={{ marginBottom: 12 }}><summary>{t("View Console script")}</summary><pre style={{ maxHeight: 260, overflow: "auto", whiteSpace: "pre-wrap", fontSize: 11 }}>{personalConsoleScript}</pre></details>
+            <label className="form-label" htmlFor="personal-credentials">{t("Personal credential JSON")}</label>
+            <textarea data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false" id="personal-credentials" className="form-input" rows={6} value={personalJSON} onChange={(e) => setPersonalJSON(e.target.value)} disabled={personalBusy} autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder={'{"access_token":"…","oid":"…","expires_at":…,"license_type":"Free"}'} style={{ resize: "vertical", fontFamily: "monospace", marginBottom: 12 }} />
+            <p>{t("Credentials stay in memory until you submit them to this gateway. Import sends one verification message before saving. Without a refresh token, collect again after expiry.")}</p>
+            <label className="form-label">{t("Fallback plan for JSON without license_type")}</label>
+            <select className="form-input" aria-label={t("Personal Copilot plan")} value={personalPlan} onChange={(e) => setPersonalPlan(e.target.value)} disabled={personalBusy}>
+              <option value="Free">Free</option><option value="Premium">Premium</option>
+            </select>
+            <button className="btn primary" style={{ marginTop: 8, marginRight: 8 }} disabled={personalBusy || !personalJSON.trim()} onClick={() => void importPersonalJSON(personalJSON)}>{personalBusy ? t("Verifying personal account…") : t("Verify and add personal account")}</button>
+            <label className="btn" style={{ marginTop: 8 }}>
+              {personalBusy ? t("Verifying personal account…") : t("Import personal credential file")}
+              <input type="file" accept=".json,application/json" disabled={personalBusy} style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void importPersonalFile(f); }} />
+            </label>
+          </div>
+          <p><b>{t("Work or school account")}</b></p>
           <div className="onb-steps" style={{ marginBottom: 16 }}>
             {[
               { n: 1, title: t("Click Start authorization below"), sub: t("A popup opens the Microsoft sign-in page.") },
@@ -291,7 +345,8 @@ export function AccountsPage({ push }: { push: Push }) {
                             {(a.displayName || a.email || "M")[0]}
                           </div>
                           <div style={{ minWidth: 0 }}>
-                            <b>{a.displayName || a.email}</b>
+                            <b>{a.displayName || a.email || a.id}</b>
+                            {a.accountType === "personal" && <small> · {t("Personal Microsoft account")} ({a.personalLicense || "Free"})</small>}
                             <div style={{ fontSize: 11, color: "var(--muted)", overflowWrap: "anywhere" }}>{a.email}</div>
                             <div style={{ display: "flex", gap: 4, marginTop: 3, flexWrap: "wrap" }}>
                               {!a.webSearchEnabled && <span className="status warn"><span className="dot" />{t("No search")}</span>}

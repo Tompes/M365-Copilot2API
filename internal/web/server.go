@@ -280,6 +280,9 @@ func (s *Server) PreheatPool() {
 	accounts := s.tokens.List()
 	cfg := s.settings.get()
 	for _, acc := range accounts {
+		if acc.TID == auth.PersonalChatTenant {
+			continue
+		}
 		if acc.OID == "" || acc.TID == "" {
 			oid, tid := extractOIDTID(acc.AccessToken)
 			acc.OID, acc.TID = oid, tid
@@ -315,7 +318,18 @@ func (s *Server) InitM365CloudClient() {
 	if len(accounts) == 0 {
 		return
 	}
-	acc := accounts[0]
+	// The cloud-history client uses an organization resource and grant.
+	// Consumer chat accounts must not be passed into that client.
+	var acc auth.AccountToken
+	for _, candidate := range accounts {
+		if candidate.TID != auth.PersonalChatTenant {
+			acc = candidate
+			break
+		}
+	}
+	if acc.ID == "" {
+		return
+	}
 	clientID := os.Getenv("M365_CLIENT_ID")
 	if clientID == "" {
 		clientID = acc.ClientID
@@ -354,7 +368,7 @@ func (s *Server) keepPoolWarm() {
 		// Skip accounts unavailable for scheduling, already cooling down, about
 		// to be cooled, or whose token is expired: warming them either cannot
 		// serve traffic or keeps hammering an upstream that just said back off.
-		if a.OID == "" || a.TID == "" ||
+		if a.TID == auth.PersonalChatTenant || a.OID == "" || a.TID == "" ||
 			!s.tokens.ScheduleEnabled(a.ID) ||
 			!s.accountPool.Available(a.ID) ||
 			(!a.ExpiresAt.IsZero() && a.ExpiresAt.Before(now)) {
@@ -382,6 +396,9 @@ func (s *Server) keepPoolWarm() {
 	// dozens of handshakes at once; the keeper runs every 90s and tops up again.
 	budget := 8
 	for _, acc := range cands {
+		if acc.TID == auth.PersonalChatTenant {
+			continue
+		}
 		if budget <= 0 {
 			break
 		}
@@ -530,6 +547,7 @@ func (s *Server) Routes() http.Handler {
 	m.HandleFunc("/api/accounts/delete", s.deleteAccount)
 	m.HandleFunc("/api/accounts/provision", s.provisionAccount)
 	m.HandleFunc("/api/accounts/bind-proxy", s.bindProxy)
+	m.HandleFunc("/api/auth/personal/import", s.importPersonalAccount)
 	m.HandleFunc("/api/auth/start", s.startPKCE)
 	m.HandleFunc("/api/auth/status", s.pkceStatus)
 	m.HandleFunc("/api/auth/callback", s.callbackPKCE)
@@ -840,6 +858,8 @@ func (s *Server) accounts(w http.ResponseWriter, r *http.Request) {
 	}
 	list := s.tokens.List()
 	type view struct {
+		AccountType      string     `json:"accountType"`
+		PersonalLicense  string     `json:"personalLicense,omitempty"`
 		ID               string     `json:"id"`
 		Email            string     `json:"email"`
 		DisplayName      string     `json:"displayName,omitempty"`
@@ -884,6 +904,7 @@ func (s *Server) accounts(w http.ResponseWriter, r *http.Request) {
 		concurrency := s.accountConcurrency.Inflight(a.ID)
 		out = append(out, view{
 			ID: a.ID, Email: a.Email, DisplayName: a.DisplayName,
+			AccountType: accountType(a), PersonalLicense: a.PersonalLicense,
 			Status: status, ScheduleEnabled: !a.ScheduleDisabled, WebSearchEnabled: !a.WebSearchDisabled, SystemPrompt: a.SystemPrompt,
 			CallCount: callCount, RateLimited: rateLimited,
 			ImageLimited:   imageLimited,

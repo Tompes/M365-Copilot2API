@@ -1,3 +1,5 @@
+> 本地分支新增实验性的个人 Microsoft 账号支持，登录方式、验证范围与限制见 [个人账号说明](docs/personal-accounts.md)。
+
 # M365 Copilot2API
 
 <p align="center">

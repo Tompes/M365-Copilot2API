@@ -1,3 +1,5 @@
+> This local branch adds experimental personal Microsoft account support. See [setup and verification notes](docs/personal-accounts.md) (Chinese).
+
 <p align="center">
   <strong>English</strong> | <a href="./README.md">简体中文</a>
 </p>

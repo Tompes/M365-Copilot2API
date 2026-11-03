@@ -133,6 +133,11 @@ func (s *Server) accountClient(accountID string) *chathub.Client {
 }
 
 func (s *Server) chatWithAccount(ctx context.Context, accountID string, account chathub.Account, request chathub.Request) (chathub.Result, error) {
+	if s.tokens != nil {
+		if stored, ok := s.tokens.Get(accountID); ok {
+			account.PersonalLicense = stored.PersonalLicense
+		}
+	}
 	release, err := s.accountConcurrency.Acquire(ctx, accountID)
 	if err != nil {
 		return chathub.Result{}, err
@@ -147,6 +152,11 @@ func (s *Server) chatWithAccount(ctx context.Context, accountID string, account 
 }
 
 func (s *Server) chatWithAccountEvents(ctx context.Context, accountID string, account chathub.Account, request chathub.Request, onEvent func(chathub.StreamEvent) error) (chathub.Result, error) {
+	if s.tokens != nil {
+		if stored, ok := s.tokens.Get(accountID); ok {
+			account.PersonalLicense = stored.PersonalLicense
+		}
+	}
 	release, err := s.accountConcurrency.Acquire(ctx, accountID)
 	if err != nil {
 		return chathub.Result{}, err
@@ -161,6 +171,11 @@ func (s *Server) chatWithAccountEvents(ctx context.Context, accountID string, ac
 }
 
 func (s *Server) chatWithAccountReasoning(ctx context.Context, accountID string, account chathub.Account, request chathub.Request, onDelta, onReasoning func(string) error) (chathub.Result, error) {
+	if s.tokens != nil {
+		if stored, ok := s.tokens.Get(accountID); ok {
+			account.PersonalLicense = stored.PersonalLicense
+		}
+	}
 	release, err := s.accountConcurrency.Acquire(ctx, accountID)
 	if err != nil {
 		return chathub.Result{}, err

@@ -18,6 +18,8 @@ import (
 // indistinguishable from genuine throttling.
 func streamErrorCode(err error) string {
 	switch {
+	case errors.Is(err, chathub.ErrRegionUnavailable):
+		return "upstream_region_unavailable"
 	case errors.Is(err, chathub.ErrRateLimitNotice):
 		return "rate_limit_exceeded"
 	case errors.Is(err, chathub.ErrOffensiveContent):

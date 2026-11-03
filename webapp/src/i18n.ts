@@ -28,6 +28,26 @@ export const LOCALES: { id: Locale; label: string }[] = [
 ];
 
 const dict: Record<string, Partial<Record<Locale, string>>> = {
+  "Personal Microsoft account": { "zh-CN": "微软个人账号" },
+  "Work or school account": { "zh-CN": "工作或学校账号" },
+  "Personal Copilot plan": { "zh-CN": "个人 Copilot 套餐" },
+  "Import personal credential file": { "zh-CN": "导入个人账号凭证文件" },
+  "Verifying personal account\u2026": { "zh-CN": "正在验证个人账号…" },
+  "Personal account verified and added": { "zh-CN": "个人账号验证成功，已添加" },
+  "Credential file is too large": { "zh-CN": "凭证文件过大" },
+  "Run scripts/personal_login.py on your computer, sign in and send one test message. Import the exported JSON file here. Import sends one verification message before saving.": { "zh-CN": "在本机运行 scripts/personal_login.py，登录并发送一条测试消息后，在此导入导出的 JSON 文件。导入时会发送一条验证消息，成功后才保存账号。" },
+  "Invalid personal credential file": { "zh-CN": "个人账号凭证文件格式无效" },
+  "Copy Console script": { "zh-CN": "复制 Console 脚本" },
+  "Console script copied": { "zh-CN": "Console 脚本已复制" },
+  "Copy the script from the expanded section below": { "zh-CN": "请展开下方脚本并手动复制" },
+  "Open Microsoft Copilot": { "zh-CN": "打开微软 Copilot" },
+  "View Console script": { "zh-CN": "查看 Console 脚本" },
+  "Personal credential JSON": { "zh-CN": "粘贴个人账号凭证 JSON" },
+  "Verify and add personal account": { "zh-CN": "验证并添加个人账号" },
+  "Could not read credential file": { "zh-CN": "无法读取凭证文件" },
+  "Fallback plan for JSON without license_type": { "zh-CN": "JSON 未包含套餐时使用" },
+  "Copy the script, open Microsoft Copilot and run it in DevTools Console. Keep the page open, start a new chat and send a short message. Paste the resulting JSON below.": { "zh-CN": "复制脚本，在微软 Copilot 页打开开发者工具 Console 并运行。不要刷新页面，新建聊天并发送一条简短消息，然后将输出的 JSON 粘贴到下方。" },
+  "Credentials stay in memory until you submit them to this gateway. Import sends one verification message before saving. Without a refresh token, collect again after expiry.": { "zh-CN": "凭证仅保留在当前页面内存中，提交后才发送到本网关。导入时会发送一条验证消息，成功后保存；未采集到刷新令牌时，到期后需重新采集。" },
   // Navigation
   Dashboard: { "zh-CN": "控制台", "zh-TW": "控制台", ja: "ダッシュボード", ko: "대시보드", es: "Panel", fr: "Tableau de bord", de: "Dashboard", "pt-BR": "Painel", ru: "Панель", ar: "لوحة التحكم" },
   Usage: { "zh-CN": "用量", "zh-TW": "用量", ja: "使用量", ko: "사용량", es: "Uso", fr: "Utilisation", de: "Nutzung", "pt-BR": "Uso", ru: "Использование", ar: "الاستخدام" },

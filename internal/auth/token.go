@@ -14,17 +14,18 @@ import (
 )
 
 type TokenSet struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token,omitempty"`
-	IDToken      string    `json:"id_token,omitempty"`
-	TokenType    string    `json:"token_type,omitempty"`
-	Scope        string    `json:"scope,omitempty"`
-	ExpiresIn    int       `json:"expires_in,omitempty"`
-	ExpiresAt    time.Time `json:"expires_at"`
-	Email        string    `json:"email,omitempty"`
-	DisplayName  string    `json:"display_name,omitempty"`
-	HomeOID      string    `json:"home_oid,omitempty"`
-	TenantID     string    `json:"tenant_id,omitempty"`
+	PersonalLicense string    `json:"personal_license,omitempty"`
+	AccessToken     string    `json:"access_token"`
+	RefreshToken    string    `json:"refresh_token,omitempty"`
+	IDToken         string    `json:"id_token,omitempty"`
+	TokenType       string    `json:"token_type,omitempty"`
+	Scope           string    `json:"scope,omitempty"`
+	ExpiresIn       int       `json:"expires_in,omitempty"`
+	ExpiresAt       time.Time `json:"expires_at"`
+	Email           string    `json:"email,omitempty"`
+	DisplayName     string    `json:"display_name,omitempty"`
+	HomeOID         string    `json:"home_oid,omitempty"`
+	TenantID        string    `json:"tenant_id,omitempty"`
 }
 
 type tokenResponse struct {
